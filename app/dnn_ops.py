@@ -492,9 +492,12 @@ def _sr_model(model: str, scale: int):
 
 
 # cv2.dnn_superres runs the network at full OUTPUT resolution, so RAM scales
-# with output pixels. Cap projected output (env-tunable) so large inputs can't
-# OOM Render's 512 MB free tier — the input is pre-shrunk to fit the budget.
-_SR_MAX_OUTPUT_PX = int(os.getenv("CV_FLOW_SR_MAX_OUTPUT_PX", str(2_500_000)))
+# with output pixels (~200 MB per output megapixel on top of the ~120 MB cv2
+# baseline). Cap projected output (env-tunable) so large inputs can't OOM
+# Render's 512 MB free tier — the input is pre-shrunk to fit the budget.
+# Default ~1.0 Mpx output keeps peak RSS ~300-350 MB (safe on free tier); raise
+# it (and use a paid 2 GB tier) for genuinely large super-resolution outputs.
+_SR_MAX_OUTPUT_PX = int(os.getenv("CV_FLOW_SR_MAX_OUTPUT_PX", str(1_000_000)))
 
 
 def op_super_resolution_dnn(img, p):

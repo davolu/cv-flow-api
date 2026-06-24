@@ -128,9 +128,10 @@ Measured peak RSS (single op, one model loaded; includes the cv2 baseline ~100 M
 - **Lighter ops fit the free 512 MB tier individually.** `dnn_superres` runs the
   network at full **output** resolution, so RAM grows with output pixels — a 1 MP
   input at ×3 can peak well over 1 GB. The op **pre-shrinks inputs** so projected
-  output stays under `CV_FLOW_SR_MAX_OUTPUT_PX` (default 2.5 M px) to avoid OOM on
-  free tier; raise it (and use a **paid Starter / 2 GB** plan) for true large-image
-  super-resolution.
+  output stays under `CV_FLOW_SR_MAX_OUTPUT_PX` (**default 1.0 M px**, ~300–350 MB
+  peak — safe on free tier). For true large-image super-resolution, raise that env
+  var **and** move to a **paid Starter / 2 GB** plan (the uncapped op peaked
+  ~0.8–1.2 GB in testing and will OOM the 512 MB free tier).
 - **Chaining several DL ops in one pipeline loads several models at once** and adds
   up — a multi-model pipeline (e.g. detection → segmentation → style) can exceed
   512 MB even though each op fits alone. For heavy use, prefer **Render Starter
