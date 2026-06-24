@@ -1,0 +1,21 @@
+# Render Blueprint for the CV-Flow API.
+# New + -> Blueprint -> connect this repo. Render reads this file and provisions
+# the web service automatically. opencv-python-headless needs no system GL libs,
+# so the plain Python runtime works (no Docker required).
+services:
+  - type: web
+    name: cv-flow-api
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      # Lock CORS to your frontend once it's live, e.g.
+      # https://cv-flow.vercel.app  (comma-separate multiple origins).
+      # Leave unset to allow all origins ("*").
+      - key: FRONTEND_ORIGIN
+        sync: false
