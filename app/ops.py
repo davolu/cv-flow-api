@@ -10,12 +10,13 @@ The OPS dict at the bottom maps an op name (matching the frontend block `type`)
 to its function, so adding a new op is a one-line append — nothing else changes.
 
 ────────────────────────────────────────────────────────────────────────────
-PHASE 2 NOTE
-Phase 2 adds deep-learning ops here (object detection / instance & semantic
-segmentation / pose estimation). They keep the SAME signature
-`op(img, params) -> ndarray`; their bodies will run a model (ultralytics / torch /
-onnxruntime) and draw results onto the image, then register in OPS exactly like
-the classic cv2 ops below.
+DEEP-LEARNING OPS (PHASE 2)
+The deep-learning ops live in `app/dnn_ops.py` and are merged into OPS at the
+bottom of this file. They keep the SAME signature `op(img, params) -> ndarray`
+but run real model inference via OpenCV's DNN module (`cv2.dnn` with ONNX/Caffe/
+Torch models) plus `cv2.dnn_superres` — NO PyTorch / ultralytics. Each lazily
+downloads + caches a small model on first use and raises a clear error if that
+fails (never crashes the request).
 ────────────────────────────────────────────────────────────────────────────
 """
 
@@ -779,3 +780,10 @@ OPS = {
     "qr_detect": op_qr_detect,
     "super_resolution": op_super_resolution,
 }
+
+# --------------------------------------------------------------------------- #
+#  merge in the deep-learning ops (cv2.dnn-based, lazy model download)         #
+# --------------------------------------------------------------------------- #
+from .dnn_ops import DNN_OPS  # noqa: E402  (kept at bottom to avoid import cycle)
+
+OPS.update(DNN_OPS)

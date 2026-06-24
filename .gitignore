@@ -7,3 +7,5 @@ env/
 *.egg-info/
 .DS_Store
 .pytest_cache/
+# Deep-learning model weights are downloaded + cached at runtime, never committed.
+models/

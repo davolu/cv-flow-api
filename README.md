@@ -76,11 +76,74 @@ Interactive docs: **`/docs`** (Swagger UI).
 | `face_detect` | Haar-cascade frontal-face boxes (`scaleFactor`, `minNeighbors`, `minSize`) |
 
 Ops live in [`app/ops.py`](app/ops.py) as a simple `OPS` registry mapping
-`op name -> function(img, params)`. Adding an op is a one-line append.
+`op name -> function(img, params)`. Adding an op is a one-line append. (The table
+above lists the original classic-CV ops; ~45 more classic ops — filters, edges,
+features, geometry, etc. — are also registered. The deep-learning ops are below.)
 
-> **Phase 2** adds deep-learning ops here (object detection, instance/semantic
-> segmentation, pose estimation) with the *same* signature — see the note in
-> `app/ops.py`.
+---
+
+## AI / Deep-Learning ops (CPU, `cv2.dnn`)
+
+These run **real model inference with no PyTorch / ultralytics** — everything goes
+through OpenCV's DNN module (`cv2.dnn` with ONNX / Caffe / Darknet / Torch models)
+plus `cv2.dnn_superres`. They live in [`app/dnn_ops.py`](app/dnn_ops.py) and are
+merged into the same `OPS` registry.
+
+**How models are handled.** Nothing heavy is committed. Each op **lazily downloads
+its model on first use** into a cache dir (`CV_FLOW_MODELS_DIR`, default `./models`,
+falling back to `/tmp`), keeps the loaded net in memory, and reuses both afterward.
+If a download or load fails the op returns a **clear error message** (surfaced as
+that node's `errors[id]`) — it never crashes the request. **CPU inference is slow
+(seconds per image); the first call to each op also pays a one-time model download.**
+
+| op | model | source | size | params |
+|----|-------|--------|------|--------|
+| `object_detection` | YOLOv4-tiny (Darknet, COCO-80) | [AlexeyAB/darknet](https://github.com/AlexeyAB/darknet) cfg + `darknet_yolo_v4_pre` weights | ~24 MB | `conf`, `nms` |
+| `face_detection_dnn` | res10 SSD (Caffe) | [opencv/opencv_3rdparty](https://github.com/opencv/opencv_3rdparty) + opencv `deploy.prototxt` | ~10 MB | `conf` |
+| `image_classification` | SqueezeNet 1.1 (ONNX, ImageNet-1000) | [onnx/models](https://github.com/onnx/models) zoo | ~5 MB | `topk` |
+| `semantic_segmentation` | PPHumanSeg (ONNX, person/bg) | [opencv/opencv_zoo](https://github.com/opencv/opencv_zoo) | ~6 MB | `mode`, `alpha` |
+| `style_transfer` | fast-neural-style (Torch `.t7`) | [Johnson fast-neural-style](https://cs.stanford.edu/people/jcjohns/fast-neural-style/) | ~15 MB / style | `style`, `maxSide` |
+| `super_resolution_dnn` | ESPCN / FSRCNN (`dnn_superres` `.pb`) | [TF-ESPCN](https://github.com/fannymonori/TF-ESPCN) / [FSRCNN_Tensorflow](https://github.com/Saafke/FSRCNN_Tensorflow) | <0.1 MB | `model`, `scale` (×2/×3/×4) |
+| `ocr_text` | Tesseract (via `pytesseract`) | system `tesseract-ocr` binary | n/a | `minConf` |
+
+> ⚠️ **YOLOv5/v8 ONNX exports don't load in OpenCV 4.10** (unsupported `Expand`/
+> `Slice` ONNX ops), which is why detection uses **YOLOv4-tiny (Darknet)** and
+> segmentation uses **PPHumanSeg** from the OpenCV Zoo — both load natively in
+> `cv2.dnn`. All seven ops were verified end-to-end on CPU.
+
+### Memory / Render tier
+
+Measured peak RSS (single op, one model loaded; includes the cv2 baseline ~100 MB):
+
+| op | peak RSS | fits 512 MB free tier? |
+|----|----------|------------------------|
+| `ocr_text` | ~60 MB | ✅ |
+| `image_classification` | ~95 MB | ✅ |
+| `style_transfer` | ~125 MB | ✅ (slow: ~30–60 s/image) |
+| `face_detection_dnn` | ~125 MB | ✅ |
+| `semantic_segmentation` | ~135 MB | ✅ |
+| `object_detection` | ~290 MB | ✅ (single op) |
+| `super_resolution_dnn` | **~800 MB – 1.2 GB on large inputs** | ⚠️ see below |
+
+- **Lighter ops fit the free 512 MB tier individually.** `dnn_superres` runs the
+  network at full **output** resolution, so RAM grows with output pixels — a 1 MP
+  input at ×3 can peak well over 1 GB. The op **pre-shrinks inputs** so projected
+  output stays under `CV_FLOW_SR_MAX_OUTPUT_PX` (default 2.5 M px) to avoid OOM on
+  free tier; raise it (and use a **paid Starter / 2 GB** plan) for true large-image
+  super-resolution.
+- **Chaining several DL ops in one pipeline loads several models at once** and adds
+  up — a multi-model pipeline (e.g. detection → segmentation → style) can exceed
+  512 MB even though each op fits alone. For heavy use, prefer **Render Starter
+  (2 GB)** or larger.
+- Models cache to disk after first download, so only RAM (not re-download) is the
+  recurring cost.
+
+### `/models` and the model cache
+
+Model files are downloaded at runtime to **`CV_FLOW_MODELS_DIR`** (default
+`./models`, pre-created and writable in the Docker image; `/tmp` fallback). The
+directory is **git-ignored** — weights are never committed. To pre-warm, just call
+each op once after deploy.
 
 ---
 

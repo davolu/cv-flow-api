@@ -1,21 +1,31 @@
 # Render Blueprint for the CV-Flow API.
 # New + -> Blueprint -> connect this repo. Render reads this file and provisions
-# the web service automatically. opencv-python-headless needs no system GL libs,
-# so the plain Python runtime works (no Docker required).
+# the web service automatically.
+#
+# We use the DOCKER runtime (not plain Python) so the Dockerfile can apt-get the
+# `tesseract-ocr` binary that the `ocr_text` deep-learning op needs. The other
+# six DL ops (cv2.dnn) would also work on the plain Python runtime, but the
+# Docker path keeps everything (incl. OCR) working in one place.
+#
+# NOTE ON RAM: the lighter DL ops fit the free 512 MB tier individually, but
+# super-resolution on large images and multi-model pipelines can exceed it —
+# bump `plan` to `starter` (2 GB) for heavy deep-learning use. See README.
 services:
   - type: web
     name: cv-flow-api
-    runtime: python
+    runtime: docker
+    dockerfilePath: ./Dockerfile
     plan: free
     region: oregon
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.9
       # Lock CORS to your frontend once it's live, e.g.
       # https://cv-flow.vercel.app  (comma-separate multiple origins).
       # Leave unset to allow all origins ("*").
       - key: FRONTEND_ORIGIN
         sync: false
+      # Where DL models are cached at runtime (already set in the Dockerfile;
+      # repeated here for visibility). Raise CV_FLOW_SR_MAX_OUTPUT_PX on a paid
+      # tier for larger super-resolution outputs.
+      - key: CV_FLOW_MODELS_DIR
+        value: /app/models
