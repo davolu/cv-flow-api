@@ -1,7 +1,8 @@
 FROM python:3.11-slim
 
-# opencv-python-headless ships without GUI/GL deps, but cv2 still links against
-# libglib's gthread at import time — install just that one small system lib.
+# opencv-contrib-python-headless ships without GUI/GL deps, but cv2 still links
+# against libglib's gthread at import time — install just that one small system lib.
+# (the contrib build unlocks SIFT/ORB feature detectors and the dnn_superres module.)
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
