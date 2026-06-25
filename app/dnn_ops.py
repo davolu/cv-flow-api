@@ -447,12 +447,17 @@ def op_style_transfer(img, p):
         work, 1.0, (ww, wh), (103.939, 116.779, 123.68), swapRB=False, crop=False
     )
     net.setInput(blob)
-    out = net.forward().reshape(3, wh, ww)
+    # The network may emit a spatial size that differs slightly from the input
+    # (it rounds H/W to its stride), so reshape from the ACTUAL output shape
+    # rather than assuming (3, wh, ww) — then restore to the original size.
+    fwd = net.forward()
+    _, c, oh, ow = fwd.shape
+    out = fwd.reshape(c, oh, ow)
     out[0] += 103.939
     out[1] += 116.779
     out[2] += 123.68
     out = out.clip(0, 255).transpose(1, 2, 0).astype(np.uint8)
-    if scale < 1.0:
+    if (out.shape[1], out.shape[0]) != (w, h):
         out = cv2.resize(out, (w, h), interpolation=cv2.INTER_LINEAR)
     return out
 
